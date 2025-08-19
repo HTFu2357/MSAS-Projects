@@ -1,21 +1,325 @@
 ---
-title: "MSASProject"
+title: "Main"
 author: "Fu"
-date: "2025-03-10"
+date: "2025-03-17"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(ggplot2)
+library(readr)
 
+library(ggeffects)
 ```
 
-## Plots
+
+## 1. Overall result
+
+```{r}
+data <- read.csv("C:/Users/fuhet/Downloads/WorldCupShootoutsNew.csv")
+
+cleaned_data <- data |> select(!Elimination)
+
+#This is the data set we are working with. Contains all penalty in WC. 
+```
+
+First, we present the overall graph according to regions (that is, how many players shoot at each region).
+
+```{r}
+ggplot(cleaned_data, aes(x = factor(Zone))) +
+  geom_bar(position = "dodge", fill = "skyblue") +
+  labs(x = "Shot Region", y = "Count of Shots") +
+  ggtitle("Number of Shots Landing in Each Zone")
+```
+
+Right off the bat, there are several observations:
+- Most players shoot to either left or right (zone 2,5,8 are least popular).
+- Most players aim for lower corners (zone 7,8,9).
+
+## 2. Player dominant foot v.s. direction of shot
+
+
+
+This is plot for the player dominant foot vs. shot zone (using ggplot). We first do a separate bar plot.
 
 ```{r}
 
+ggplot(cleaned_data, aes(x = factor(Zone), fill = Foot)) +
+  geom_bar(position = "dodge") +
+  labs(x = "Shot Region", y = "Count of Shots", fill = "Dominant Foot") +
+  ggtitle("Shot Region Distribution by Dominant Foot") +
+  facet_grid(~Foot) +
+  theme_minimal()
 
+```
+
+Let's do pie charts next.
+
+
+
+```{r}
+data_summary <- cleaned_data |>
+  group_by(Foot, Zone) |>
+  summarize(count = n()) |>
+  mutate(percentage = count / sum(count) * 100)
+
+# Create pie chart
+ggplot(data_summary, aes(x = "", y = percentage, fill = factor(Zone))) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  facet_wrap(~ Foot) +
+  labs(title = "Shot Region Distribution by Dominant Foot",
+       fill = "Shot Region") +
+  theme_void()
+```
+
+Some precise numbers:
+
+```{r}
+data_summary |> select(percentage)
+```
+
+*Conclusions*: 
+- It seems like most players have tendency to shoot "across". That is, aiming at the same direction as their dominant foot. From the numbers, we see that the total percentage of left-footed players that aim for zone 3,6,9 is about 39.29\%. Similarly, the total percentage of left-footed players that aim for zone 1,4,7 is about 32.74\%. (more can be said?? using other statistical tests??)
+
+## 3. Conversion rate
+
+In this section, we look into the conversion rates (what are the odds that the player scores?)
+There are many ways to look into this: for example, we can investigate these two different senarios.
+- shot was on target;
+- shot was saved;
+- shot converted to a goal.
+
+First, we create a plot that display zone vs. goal
+
+```{r}
+data_summary_goal <- cleaned_data |> 
+  na.omit()|>
+  # Remove rows with NA in Foot or Zone
+  group_by(Zone, Goal) |>
+  summarize(count = n()) |>
+  mutate(percentage = count / sum(count) * 100)
+
+data_summary_goal
+
+ggplot(cleaned_data, aes(x = factor(Zone), fill = factor(Goal))) +
+  geom_bar(position = "fill") +
+  labs(x = "Shot Region", y = "Proportion of Goals", fill = "Scored or not") +
+  ggtitle("Proportional Bar Plot of Conversion Rate Against Shot Regions") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal()
+```
+
+From here, we can make some basic observations
+
+- It seems like top bins (zone 1,2,3) have the highest conversion rates (76\% on average), closely followed by middle (zone 4,5,6) with an average conversion rate of 70\%, and the botton corners have the least average conversion rate of 65\%.
+
+- While lots of shots aiming at lower corners are taken, it is also easier to save. Thus, we can see a high miss count for zone 7,8,9.
+
+Now, we display the graph for zone vs. saved.
+
+```{r}
+cleaned_data <- cleaned_data |>
+  mutate(saved = if_else(OnTarget == 1 & Goal == 0, T, F))
+
+#Here we add a saved column
+
+#data_summary_saved <- cleaned_data |>
+#  group_by(Zone, saved) |>
+#  summarise(count = n())
+  
+
+ggplot(cleaned_data, aes(x = factor(Zone), fill = saved)) +
+  geom_bar(position = "fill")+
+  labs(x = "Shot Region", y = "Chance of being Saved", fill = "Saved or not") +
+  ggtitle("Proportional Bar Plot of Saved Shots Against Shot Regions") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal()
+```
+
+Here we see that the top bins are the most difficult to save, followed by middle, then the lower corners. Shots placed in the middle is also more likely to be saved.
+
+
+## Objective of project
+
+Though still in the air, here're some things I want to find out:
+
+1. From a *purely scoring-likelihood maximizing perspective*, when should players seek to aim for top bins (risky but less likely to be saved) vs lower bins (easier but more likely to be saved)? 
+
+What i need
+
+- some sort of metric (way to quantify the likelihood of scoring)
+
+- take into consideration the risk factor (percentage of missing/being saved) vs benefits (percentage on-target)
+
+- perform some statistical tests? (what test?)
+
+
+
+Ideas:
+
+- logistic regression (conversion rate)
+
+```{r}
+reg <- glm(Goal ~ factor(Zone), data = cleaned_data, family = "binomial") 
+
+summary(reg)
+```
+
+```{r}
+reg2 <- glm(saved ~ factor(Zone) , data = cleaned_data, family = "binomial") 
+
+summary(reg2)
+```
+
+```{r}
+reg3 <- glm(saved ~ factor(Zone), data = cleaned_data, family = "binomial") 
+
+summary(reg3)
+```
+
+correlation
+
+```{r}
+# Subset to on-target shots and convert variables to factors
+model_data <- cleaned_data %>%
+  filter(OnTarget == 1) %>%
+  mutate(
+    Zone = factor(Zone),  # Treat Zone as categorical (1–9)
+    Keeper = factor(Keeper, levels = c("L", "R")),  # Reference = "L"
+    Foot = factor(Foot, levels = c("L", "R"))  # Reference = "L"
+  )
+
+# Model with Zone-KeeperDirection and Foot-KeeperDirection interactions
+model <- glm(
+  Goal ~ Zone * Keeper + Foot * Keeper,
+  data = model_data,
+  family = binomial
+)
+
+# View summary
+summary(model)
+
+# Generate predictions for Zone-KeeperDirection interaction
+zone_keeper_effects <- ggpredict(model, terms = c("Zone", "Keeper"))
+
+# Plot
+ggplot(zone_keeper_effects, aes(x = x, y = predicted, color = group)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  labs(
+    title = "Goal Probability by Zone and Keeper Dive Direction",
+    x = "Zone", y = "Predicted Probability", color = "Keeper Direction"
+  )
+```
+
+Probability prediction (R)
+```{r}
+pred <- data.frame(Zone = 1:9, Foot = rep("R", 9))
+predict(reg2, pred, type = "response")
+
+```
+
+(L)
+```{r}
+pred <- data.frame(Zone = 1:9, Foot = rep("L", 9))
+predict(reg2, pred, type = "response")
+```
+
+
+
+```{r}
+model_data_2 <- cleaned_data %>%
+  filter(OnTarget == TRUE) %>%
+  mutate(
+    Zone = factor(Zone),
+    KeeperDirection = factor(Keeper, levels = c("L", "C", "R")),
+    Foot = factor(Foot, levels = c("L", "R"))
+  )
+
+model <- glm(
+  Goal ~ Zone * KeeperDirection + Foot * KeeperDirection,
+  data = model_data_2,
+  family = binomial
+)
+summary(model)
+
+# Create a prediction grid for Zone and KeeperDirection
+pred_data_L <- expand.grid(
+  Zone = factor(1:9),
+  KeeperDirection = factor(c("L", "R"), levels = c("L", "R")),
+  Foot = factor("L")  # Hold Foot constant (e.g., left-footed taker)
+)
+
+# Add predicted probabilities
+pred_data_L$prob <- predict(model, newdata = pred_data_L, type = "response")
+
+# Plot
+ggplot(pred_data_L, aes(x = Zone, y = prob, color = KeeperDirection, group = KeeperDirection)) +
+  geom_point(size = 3) +
+  geom_line() +
+  labs(
+    title = "Goal Probability by Zone and Keeper Direction (Left-Footed Taker)",
+    x = "Zone", y = "Probability of Goal", color = "Keeper Direction"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+# Create a prediction grid for Zone and KeeperDirection
+pred_data_R <- expand.grid(
+  Zone = factor(1:9),
+  KeeperDirection = factor(c("L", "R"), levels = c("L", "R")),
+  Foot = factor("R")  # Hold Foot constant (e.g., left-footed taker)
+)
+
+# Add predicted probabilities
+pred_data_R$prob <- predict(model, newdata = pred_data_R, type = "response")
+
+# Plot
+ggplot(pred_data_R, aes(x = Zone, y = prob, color = KeeperDirection, group = KeeperDirection)) +
+  geom_point(size = 3) +
+  geom_line() +
+  labs(
+    title = "Goal Probability by Zone and Keeper Direction (Right-Footed Taker)",
+    x = "Zone", y = "Probability of Goal", color = "Keeper Direction"
+  ) +
+  theme_minimal()
+```
+
+More probability prediction:
+
+```{r}
+# Include KeeperDirection in the model
+# Model without Foot (only Zone and KeeperDirection)
+reg4 <- glm(
+  saved ~ factor(Zone) + KeeperDirection,  # Remove Foot
+  data = model_data_2, 
+  family = "binomial"
+)
+
+# Example: Predict for a right-footed taker (Foot = "R") and keeper diving left (KeeperDirection = "L")
+pred <- data.frame(
+  Zone = 1:9,
+  KeeperDirection = rep("L", 9)  # Keeper dives left
+)
+
+# Predicted save probabilities (for ANY foot)
+predict(reg4, newdata = pred, type = "response")
+```
+
+
+```{r}
+#bootstrap
+simdat <- rmultinom(1000,size=1418, prob=c(688,21,650,59)/1418)
+thfun <- function(thta) {
+log((thta[1]*thta[4])/(thta[2]*thta[3])) }
+logtheta <- apply(simdat,2,thfun)
+par(mai=c(0.9,0.8,0.3,0.2))
+hist(logtheta,main="",freq=F,col="lightblue"); mean(logtheta); sd(logtheta)
 ```
 
 
