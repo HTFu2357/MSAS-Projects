@@ -1,4 +1,4 @@
-﻿Game_id,Team,Zone,Foot,Keeper,OnTarget,Goal,Penalty_Number,Elimination
+Game_id,Team,Zone,Foot,Keeper,OnTarget,Goal,Penalty_Number,Elimination
 1,FRA,7,R,R,1,1,1,0
 1,GER,9,R,C,1,1,2,0
 1,FRA,6,R,L,1,1,3,0
